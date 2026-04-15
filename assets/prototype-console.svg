@@ -1,0 +1,88 @@
+<svg width="1280" height="860" viewBox="0 0 1280 860" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1280" height="860" rx="24" fill="#F1F5F9"/>
+  <rect x="28" y="28" width="1224" height="804" rx="22" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <rect x="52" y="52" width="260" height="756" rx="20" fill="#0F172A"/>
+  <text x="84" y="102" fill="#94A3B8" font-family="Arial, sans-serif" font-size="18">model-api-bridge</text>
+  <text x="84" y="142" fill="#F8FAFC" font-family="Arial, sans-serif" font-size="34" font-weight="700">Console</text>
+  <text x="84" y="180" fill="#64748B" font-family="Arial, sans-serif" font-size="18">multi-provider model routing</text>
+
+  <rect x="76" y="226" width="212" height="46" rx="12" fill="#1D4ED8"/>
+  <text x="106" y="255" fill="#EFF6FF" font-family="Arial, sans-serif" font-size="20">仪表盘 Dashboard</text>
+  <text x="84" y="326" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="20">服务商 Providers</text>
+  <text x="84" y="372" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="20">模型路由 Models</text>
+  <text x="84" y="418" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="20">额度 Quotas</text>
+  <text x="84" y="464" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="20">日志 Logs</text>
+  <text x="84" y="510" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="20">系统 System</text>
+
+  <text x="352" y="96" fill="#64748B" font-family="Arial, sans-serif" font-size="18">控制台</text>
+  <text x="352" y="140" fill="#0F172A" font-family="Arial, sans-serif" font-size="38" font-weight="700">路由健康与回退概览</text>
+  <rect x="1088" y="88" width="132" height="42" rx="21" fill="#DCFCE7"/>
+  <text x="1122" y="115" fill="#166534" font-family="Arial, sans-serif" font-size="18">运行中</text>
+
+  <rect x="352" y="178" width="198" height="110" rx="18" fill="#EFF6FF" stroke="#BFDBFE"/>
+  <text x="378" y="214" fill="#2563EB" font-family="Arial, sans-serif" font-size="18">启用服务商</text>
+  <text x="378" y="260" fill="#0F172A" font-family="Arial, sans-serif" font-size="42" font-weight="700">6</text>
+  <text x="378" y="286" fill="#64748B" font-family="Arial, sans-serif" font-size="16">2 个 degraded key</text>
+
+  <rect x="572" y="178" width="198" height="110" rx="18" fill="#ECFDF5" stroke="#BBF7D0"/>
+  <text x="598" y="214" fill="#059669" font-family="Arial, sans-serif" font-size="18">逻辑模型组</text>
+  <text x="598" y="260" fill="#0F172A" font-family="Arial, sans-serif" font-size="42" font-weight="700">14</text>
+  <text x="598" y="286" fill="#64748B" font-family="Arial, sans-serif" font-size="16">38 条候选路由</text>
+
+  <rect x="792" y="178" width="198" height="110" rx="18" fill="#FFF7ED" stroke="#FED7AA"/>
+  <text x="818" y="214" fill="#C2410C" font-family="Arial, sans-serif" font-size="18">今日切换</text>
+  <text x="818" y="260" fill="#0F172A" font-family="Arial, sans-serif" font-size="42" font-weight="700">19</text>
+  <text x="818" y="286" fill="#64748B" font-family="Arial, sans-serif" font-size="16">429 / timeout / 404</text>
+
+  <rect x="1012" y="178" width="198" height="110" rx="18" fill="#FEF2F2" stroke="#FECACA"/>
+  <text x="1038" y="214" fill="#DC2626" font-family="Arial, sans-serif" font-size="18">异常路由</text>
+  <text x="1038" y="260" fill="#0F172A" font-family="Arial, sans-serif" font-size="42" font-weight="700">3</text>
+  <text x="1038" y="286" fill="#64748B" font-family="Arial, sans-serif" font-size="16">1 条 404 已移除</text>
+
+  <rect x="352" y="320" width="408" height="222" rx="18" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <text x="380" y="362" fill="#0F172A" font-family="Arial, sans-serif" font-size="24" font-weight="700">Provider 健康</text>
+  <rect x="380" y="392" width="352" height="38" rx="12" fill="#F8FAFC"/>
+  <text x="398" y="417" fill="#334155" font-family="Arial, sans-serif" font-size="18">OpenAI / primary</text>
+  <rect x="632" y="399" width="78" height="24" rx="12" fill="#DCFCE7"/>
+  <text x="654" y="416" fill="#166534" font-family="Arial, sans-serif" font-size="14">healthy</text>
+  <rect x="380" y="442" width="352" height="38" rx="12" fill="#F8FAFC"/>
+  <text x="398" y="467" fill="#334155" font-family="Arial, sans-serif" font-size="18">Volcengine / backup</text>
+  <rect x="624" y="449" width="86" height="24" rx="12" fill="#FEF3C7"/>
+  <text x="645" y="466" fill="#92400E" font-family="Arial, sans-serif" font-size="14">degraded</text>
+  <rect x="380" y="492" width="352" height="38" rx="12" fill="#F8FAFC"/>
+  <text x="398" y="517" fill="#334155" font-family="Arial, sans-serif" font-size="18">ModelScope / free-key</text>
+  <rect x="632" y="499" width="78" height="24" rx="12" fill="#DCFCE7"/>
+  <text x="654" y="516" fill="#166534" font-family="Arial, sans-serif" font-size="14">healthy</text>
+
+  <rect x="782" y="320" width="428" height="222" rx="18" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <text x="810" y="362" fill="#0F172A" font-family="Arial, sans-serif" font-size="24" font-weight="700">最近切换</text>
+  <rect x="810" y="392" width="372" height="38" rx="12" fill="#F8FAFC"/>
+  <text x="828" y="417" fill="#334155" font-family="Arial, sans-serif" font-size="16">chat-main</text>
+  <text x="950" y="417" fill="#64748B" font-family="Arial, sans-serif" font-size="16">status-404-route-deleted</text>
+  <rect x="810" y="442" width="372" height="38" rx="12" fill="#F8FAFC"/>
+  <text x="828" y="467" fill="#334155" font-family="Arial, sans-serif" font-size="16">coding-main</text>
+  <text x="1026" y="467" fill="#64748B" font-family="Arial, sans-serif" font-size="16">status-429</text>
+  <rect x="810" y="492" width="372" height="38" rx="12" fill="#F8FAFC"/>
+  <text x="828" y="517" fill="#334155" font-family="Arial, sans-serif" font-size="16">embed-main</text>
+  <text x="1038" y="517" fill="#64748B" font-family="Arial, sans-serif" font-size="16">timeout</text>
+
+  <rect x="352" y="572" width="858" height="210" rx="18" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <text x="380" y="614" fill="#0F172A" font-family="Arial, sans-serif" font-size="24" font-weight="700">模型组与候选路由原型</text>
+  <rect x="380" y="644" width="802" height="40" rx="12" fill="#E2E8F0"/>
+  <text x="398" y="670" fill="#334155" font-family="Arial, sans-serif" font-size="16">Group</text>
+  <text x="598" y="670" fill="#334155" font-family="Arial, sans-serif" font-size="16">Primary Route</text>
+  <text x="834" y="670" fill="#334155" font-family="Arial, sans-serif" font-size="16">Fallbacks</text>
+  <text x="1088" y="670" fill="#334155" font-family="Arial, sans-serif" font-size="16">Quota</text>
+
+  <rect x="380" y="694" width="802" height="34" rx="10" fill="#F8FAFC"/>
+  <text x="398" y="717" fill="#0F172A" font-family="Arial, sans-serif" font-size="16">chat-main</text>
+  <text x="598" y="717" fill="#0F172A" font-family="Arial, sans-serif" font-size="16">gpt-4.1-mini</text>
+  <text x="834" y="717" fill="#334155" font-family="Arial, sans-serif" font-size="16">doubao-seed -> qwen-plus</text>
+  <text x="1092" y="717" fill="#0F172A" font-family="Arial, sans-serif" font-size="16">430 / 1000</text>
+
+  <rect x="380" y="736" width="802" height="34" rx="10" fill="#F8FAFC"/>
+  <text x="398" y="759" fill="#0F172A" font-family="Arial, sans-serif" font-size="16">coding-main</text>
+  <text x="598" y="759" fill="#0F172A" font-family="Arial, sans-serif" font-size="16">deepseek-coder</text>
+  <text x="834" y="759" fill="#334155" font-family="Arial, sans-serif" font-size="16">qwen-coder -> glm-4.5</text>
+  <text x="1092" y="759" fill="#0F172A" font-family="Arial, sans-serif" font-size="16">88 / 500</text>
+</svg>

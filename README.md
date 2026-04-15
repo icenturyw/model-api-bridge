@@ -19,6 +19,12 @@
 
 ![model-api-bridge architecture](./assets/architecture.svg)
 
+## 原型图展示
+
+下面这张图展示了仓库当前管理台的原型方向，重点包括仪表盘总览、Provider 健康状态、最近切换记录，以及模型组与候选路由的管理视图。
+
+![model-api-bridge console prototype](./assets/prototype-console.svg)
+
 ## 适用场景
 
 - 想把多个 LLM 提供商接成一个统一入口
