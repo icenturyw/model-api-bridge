@@ -1,0 +1,38 @@
+<svg width="1200" height="480" viewBox="0 0 1200 480" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="480" rx="28" fill="#0B1220"/>
+  <rect x="24" y="24" width="1152" height="432" rx="24" fill="url(#paint0_linear)"/>
+  <circle cx="1040" cy="104" r="92" fill="#F97316" fill-opacity="0.18"/>
+  <circle cx="964" cy="392" r="132" fill="#22C55E" fill-opacity="0.12"/>
+  <circle cx="182" cy="116" r="120" fill="#38BDF8" fill-opacity="0.12"/>
+  <rect x="78" y="78" width="270" height="144" rx="20" fill="#111827" stroke="#334155"/>
+  <text x="108" y="126" fill="#94A3B8" font-family="Arial, sans-serif" font-size="22">Client Request</text>
+  <text x="108" y="170" fill="#F8FAFC" font-family="Arial, sans-serif" font-size="38" font-weight="700">/v1/chat/completions</text>
+  <text x="108" y="204" fill="#38BDF8" font-family="Arial, sans-serif" font-size="22">model: chat-main</text>
+  <rect x="452" y="54" width="294" height="372" rx="24" fill="#0F172A" stroke="#475569" stroke-width="2"/>
+  <text x="494" y="112" fill="#E2E8F0" font-family="Arial, sans-serif" font-size="30" font-weight="700">model-api-bridge</text>
+  <text x="494" y="150" fill="#94A3B8" font-family="Arial, sans-serif" font-size="20">quota-aware model API gateway</text>
+  <rect x="494" y="184" width="210" height="52" rx="14" fill="#1D4ED8"/>
+  <text x="525" y="217" fill="#EFF6FF" font-family="Arial, sans-serif" font-size="22">route selection</text>
+  <rect x="494" y="252" width="168" height="52" rx="14" fill="#047857"/>
+  <text x="525" y="285" fill="#ECFDF5" font-family="Arial, sans-serif" font-size="22">health checks</text>
+  <rect x="494" y="320" width="198" height="52" rx="14" fill="#B45309"/>
+  <text x="525" y="353" fill="#FFF7ED" font-family="Arial, sans-serif" font-size="22">quota tracking</text>
+  <rect x="842" y="82" width="270" height="102" rx="18" fill="#111827" stroke="#334155"/>
+  <text x="874" y="124" fill="#94A3B8" font-family="Arial, sans-serif" font-size="20">Provider A</text>
+  <text x="874" y="160" fill="#F8FAFC" font-family="Arial, sans-serif" font-size="28" font-weight="700">OpenAI / Azure</text>
+  <rect x="842" y="206" width="270" height="102" rx="18" fill="#111827" stroke="#334155"/>
+  <text x="874" y="248" fill="#94A3B8" font-family="Arial, sans-serif" font-size="20">Provider B</text>
+  <text x="874" y="284" fill="#F8FAFC" font-family="Arial, sans-serif" font-size="28" font-weight="700">Volcengine / DeepSeek</text>
+  <rect x="842" y="330" width="270" height="76" rx="18" fill="#111827" stroke="#334155"/>
+  <text x="874" y="377" fill="#E2E8F0" font-family="Arial, sans-serif" font-size="24">404 remove route</text>
+  <path d="M348 150H432" stroke="#38BDF8" stroke-width="8" stroke-linecap="round"/>
+  <path d="M404 126L432 150L404 174" stroke="#38BDF8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M746 234H814" stroke="#F8FAFC" stroke-width="8" stroke-linecap="round"/>
+  <path d="M786 210L814 234L786 258" stroke="#F8FAFC" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <defs>
+    <linearGradient id="paint0_linear" x1="24" y1="24" x2="1176" y2="456" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+  </defs>
+</svg>

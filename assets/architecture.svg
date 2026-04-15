@@ -1,0 +1,63 @@
+<svg width="1200" height="760" viewBox="0 0 1200 760" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="760" fill="#F8FAFC"/>
+  <rect x="48" y="64" width="240" height="116" rx="20" fill="#E0F2FE" stroke="#0EA5E9" stroke-width="2"/>
+  <text x="78" y="112" fill="#0F172A" font-family="Arial, sans-serif" font-size="22">Client / SDK / App</text>
+  <text x="78" y="146" fill="#0369A1" font-family="Arial, sans-serif" font-size="28" font-weight="700">OpenAI-compatible API</text>
+
+  <rect x="344" y="36" width="516" height="688" rx="28" fill="#0F172A"/>
+  <text x="380" y="90" fill="#F8FAFC" font-family="Arial, sans-serif" font-size="34" font-weight="700">model-api-bridge</text>
+  <text x="380" y="126" fill="#94A3B8" font-family="Arial, sans-serif" font-size="20">single binary Node.js gateway + admin console + SQLite</text>
+
+  <rect x="380" y="162" width="198" height="84" rx="18" fill="#1D4ED8"/>
+  <text x="412" y="198" fill="#DBEAFE" font-family="Arial, sans-serif" font-size="20">Alias / group resolve</text>
+  <text x="412" y="226" fill="#EFF6FF" font-family="Arial, sans-serif" font-size="18">chat-main -> routes</text>
+
+  <rect x="602" y="162" width="222" height="84" rx="18" fill="#0F766E"/>
+  <text x="634" y="198" fill="#CCFBF1" font-family="Arial, sans-serif" font-size="20">Quota accounting</text>
+  <text x="634" y="226" fill="#ECFEFF" font-family="Arial, sans-serif" font-size="18">daily / monthly request limits</text>
+
+  <rect x="380" y="274" width="198" height="96" rx="18" fill="#7C3AED"/>
+  <text x="412" y="316" fill="#F3E8FF" font-family="Arial, sans-serif" font-size="20">Health state</text>
+  <text x="412" y="344" fill="#FAF5FF" font-family="Arial, sans-serif" font-size="18">healthy / degraded / unhealthy</text>
+
+  <rect x="602" y="274" width="222" height="96" rx="18" fill="#B45309"/>
+  <text x="634" y="316" fill="#FFEDD5" font-family="Arial, sans-serif" font-size="20">Automatic fallback</text>
+  <text x="634" y="344" fill="#FFF7ED" font-family="Arial, sans-serif" font-size="18">401 / 403 / 429 / 5xx / timeout</text>
+
+  <rect x="380" y="398" width="444" height="112" rx="18" fill="#111827" stroke="#334155"/>
+  <text x="412" y="438" fill="#E5E7EB" font-family="Arial, sans-serif" font-size="22">Special handling</text>
+  <text x="412" y="472" fill="#F8FAFC" font-family="Arial, sans-serif" font-size="18">upstream 404 -> delete invalid route -> continue to next route</text>
+
+  <rect x="380" y="538" width="444" height="144" rx="18" fill="#111827" stroke="#334155"/>
+  <text x="412" y="578" fill="#E5E7EB" font-family="Arial, sans-serif" font-size="22">Admin Console</text>
+  <text x="412" y="612" fill="#F8FAFC" font-family="Arial, sans-serif" font-size="18">providers / keys / groups / aliases / quotas / logs / system</text>
+  <text x="412" y="644" fill="#94A3B8" font-family="Arial, sans-serif" font-size="18">backed by SQLite in ./data/router.db</text>
+
+  <rect x="912" y="94" width="240" height="96" rx="20" fill="#DCFCE7" stroke="#22C55E" stroke-width="2"/>
+  <text x="944" y="136" fill="#14532D" font-family="Arial, sans-serif" font-size="22">Provider Route 1</text>
+  <text x="944" y="168" fill="#166534" font-family="Arial, sans-serif" font-size="18">primary model</text>
+
+  <rect x="912" y="234" width="240" height="96" rx="20" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
+  <text x="944" y="276" fill="#78350F" font-family="Arial, sans-serif" font-size="22">Provider Route 2</text>
+  <text x="944" y="308" fill="#92400E" font-family="Arial, sans-serif" font-size="18">backup model</text>
+
+  <rect x="912" y="374" width="240" height="96" rx="20" fill="#FEE2E2" stroke="#EF4444" stroke-width="2"/>
+  <text x="944" y="416" fill="#7F1D1D" font-family="Arial, sans-serif" font-size="22">Provider Route 3</text>
+  <text x="944" y="448" fill="#991B1B" font-family="Arial, sans-serif" font-size="18">deleted after 404</text>
+
+  <rect x="912" y="548" width="240" height="112" rx="20" fill="#EDE9FE" stroke="#8B5CF6" stroke-width="2"/>
+  <text x="944" y="590" fill="#4C1D95" font-family="Arial, sans-serif" font-size="22">SQLite</text>
+  <text x="944" y="622" fill="#5B21B6" font-family="Arial, sans-serif" font-size="18">request logs</text>
+  <text x="944" y="648" fill="#5B21B6" font-family="Arial, sans-serif" font-size="18">switch events / config</text>
+
+  <path d="M288 122H330" stroke="#0EA5E9" stroke-width="8" stroke-linecap="round"/>
+  <path d="M312 100L336 122L312 144" stroke="#0EA5E9" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M860 142H892" stroke="#94A3B8" stroke-width="8" stroke-linecap="round"/>
+  <path d="M874 120L898 142L874 164" stroke="#94A3B8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M860 282H892" stroke="#94A3B8" stroke-width="8" stroke-linecap="round"/>
+  <path d="M874 260L898 282L874 304" stroke="#94A3B8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M860 422H892" stroke="#94A3B8" stroke-width="8" stroke-linecap="round"/>
+  <path d="M874 400L898 422L874 444" stroke="#94A3B8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M860 610H892" stroke="#94A3B8" stroke-width="8" stroke-linecap="round"/>
+  <path d="M874 588L898 610L874 632" stroke="#94A3B8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

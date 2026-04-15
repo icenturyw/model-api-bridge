@@ -1,0 +1,14 @@
+{
+  "name": "model-api-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Quota-aware model API bridge with admin console and automatic route fallback",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test --experimental-test-isolation=none"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

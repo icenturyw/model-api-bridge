@@ -1,0 +1,8 @@
+.codex
+data-backups/
+data/router.db
+data/router.db-shm
+data/router.db-wal
+data/router.pid
+logs/server.log
+node_modules/
