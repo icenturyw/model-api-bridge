@@ -120,13 +120,53 @@ function deleteMissingRoute(store, route) {
   }
 }
 
-function sendStaticFile(res, filePath, contentType) {
+const CONTENT_TYPES = {
+  ".css": "text/css; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+};
+
+function getContentType(filePath) {
+  return CONTENT_TYPES[path.extname(filePath)] || "application/octet-stream";
+}
+
+function sendStaticFile(res, filePath, headers = {}) {
   const body = fs.readFileSync(filePath);
   res.writeHead(200, {
-    "Content-Type": contentType,
+    "Content-Type": getContentType(filePath),
     "Content-Length": body.length,
+    ...headers,
   });
   res.end(body);
+}
+
+function trySendStaticAsset(res, rootDir, pathname) {
+  const relativePath = pathname.replace(/^\/+/, "");
+  const absolutePath = path.join(rootDir, relativePath);
+
+  if (!absolutePath.startsWith(rootDir)) {
+    return false;
+  }
+
+  if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
+    return false;
+  }
+
+  const cacheControl = absolutePath.includes(`${path.sep}admin${path.sep}`) || absolutePath.endsWith(".html")
+    ? "no-cache"
+    : "public, max-age=31536000, immutable";
+  sendStaticFile(res, absolutePath, { "Cache-Control": cacheControl });
+  return true;
+}
+
+function toOptionalNumber(value) {
+  if (value === null || value === undefined || value === "") {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function buildGatewaySnippet(req, gatewayKeyConfigured) {
@@ -138,10 +178,15 @@ function buildGatewaySnippet(req, gatewayKeyConfigured) {
   };
 }
 
+function buildProviderAuthHeaders(apiKey) {
+  return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+}
+
 function createApp(overrides = {}) {
   const config = loadConfig(overrides);
   const store = new Store(config.dbPath, { failureThreshold: config.failureThreshold });
   const publicDir = path.join(__dirname, "..", "public");
+  const adminDir = path.join(publicDir, "admin");
   let healthMonitor = null;
 
   async function forwardToProvider(route, endpointPath, requestBody) {
@@ -153,7 +198,7 @@ function createApp(overrides = {}) {
       const upstreamResponse = await fetch(normalizeBaseUrl(route.base_url, endpointPath), {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${route.api_key}`,
+          ...buildProviderAuthHeaders(route.api_key),
           "Content-Type": "application/json",
         },
         body: JSON.stringify(requestBody),
@@ -181,9 +226,7 @@ function createApp(overrides = {}) {
     try {
       const response = await fetch(normalizeBaseUrl(target.base_url, "/v1/models"), {
         method: "GET",
-        headers: {
-          Authorization: `Bearer ${target.api_key}`,
-        },
+        headers: buildProviderAuthHeaders(target.api_key),
         signal: controller.signal,
       });
       clearTimeout(timeout);
@@ -324,6 +367,33 @@ function createApp(overrides = {}) {
       try {
         store.consumeRoute(route.id);
       } catch (error) {
+        if (error.message === "Provider minute rate limit exhausted") {
+          if (nextRoute) {
+            switched = true;
+            lastSwitchReason = "provider-rate-limited";
+            store.recordSwitch({
+              requestedModel: body.model,
+              fromTarget: route.target_name,
+              toTarget: nextRoute.target_name,
+              reason: "provider-rate-limited",
+            });
+            continue;
+          }
+          store.recordRequestLog({
+            requestedModel: body.model,
+            statusCode: 429,
+            errorCode: "provider-rate-limited",
+            attempts,
+            switchReason: "provider-rate-limited",
+          });
+          json(res, 429, {
+            error: {
+              message: "All available providers for this model are currently rate limited per minute",
+              type: "rate_limit_error",
+            },
+          });
+          return;
+        }
         if (nextRoute) {
           switched = true;
           lastSwitchReason = "quota-exhausted";
@@ -532,13 +602,10 @@ function createApp(overrides = {}) {
       return { statusCode: 404, payload: { error: "Provider not found" } };
     }
     const testKey = provider.keys.find((key) => key.enabled);
-    if (!testKey) {
-      return { statusCode: 400, payload: { error: "Provider has no enabled keys" } };
-    }
-    const key = store.getProviderKey(testKey.id);
-    const response = await fetch(normalizeBaseUrl(key.base_url, "/v1/models"), {
+    const baseUrl = provider.base_url;
+    const response = await fetch(normalizeBaseUrl(baseUrl, "/v1/models"), {
       method: "GET",
-      headers: { Authorization: `Bearer ${key.api_key}` },
+      headers: testKey ? buildProviderAuthHeaders(store.getProviderKey(testKey.id).api_key) : {},
     }).catch((error) => ({ ok: false, status: 503, error }));
     if (!response.ok) {
       return {
@@ -550,6 +617,17 @@ function createApp(overrides = {}) {
       };
     }
     return { statusCode: 200, payload: { ok: true } };
+  }
+
+  function buildSystemPayload(req) {
+    const summary = store.getSystemSummary();
+    return {
+      ...summary,
+      gateway: {
+        ...buildGatewaySnippet(req, summary.gatewayApiKeyConfigured),
+        exampleModel: summary.preferredExternalModelName,
+      },
+    };
   }
 
   async function handleAdmin(req, res, pathname) {
@@ -629,93 +707,126 @@ function createApp(overrides = {}) {
       return;
     }
 
+    if (pathname === "/admin" || pathname === "/admin/") {
+      sendStaticFile(res, path.join(adminDir, "index.html"), { "Cache-Control": "no-cache" });
+      return;
+    }
+
+    if (!pathname.startsWith("/admin/api/")) {
+      const servedAsset = trySendStaticAsset(res, publicDir, pathname);
+      if (servedAsset) {
+        return;
+      }
+    }
+
     const session = requireAdminSession(req, res);
     if (!session) {
       return;
     }
 
-    if (pathname === "/admin/dashboard/summary" && req.method === "GET") {
-      json(res, 200, store.getDashboardSummary());
+    if (pathname === "/admin/api/overview" && req.method === "GET") {
+      json(res, 200, { data: store.getOverview() });
       return;
     }
 
-    if (pathname === "/admin/providers" && req.method === "GET") {
-        json(res, 200, {
-        providers: store.listProviders(),
-        providerKeyOptions: store.listProviderKeyOptions(),
+    if (pathname === "/admin/api/providers" && req.method === "GET") {
+      json(res, 200, {
+        data: {
+          providers: store.listProvidersForAdmin(),
+          providerKeyOptions: store.listProviderKeyOptions(),
+        },
       });
       return;
     }
 
-    if (pathname === "/admin/providers" && req.method === "POST") {
+    if (/^\/admin\/api\/providers\/\d+$/.test(pathname) && req.method === "GET") {
+      const providerId = Number(pathname.split("/").pop());
+      const provider = store.getProviderDetail(providerId);
+      if (!provider) {
+        json(res, 404, { error: "Provider not found" });
+        return;
+      }
+      json(res, 200, { data: provider });
+      return;
+    }
+
+    if (pathname === "/admin/api/providers" && req.method === "POST") {
       const body = await readJsonBody(req);
       const provider = store.createProvider({
         name: body.name,
         baseUrl: body.baseUrl,
         enabled: body.enabled,
         timeoutMs: body.timeoutMs,
+        requestsPerMinute: body.requestsPerMinute,
         priority: body.priority,
         keys: Array.isArray(body.keys) ? body.keys : [],
       });
-      json(res, 201, provider);
+      json(res, 201, { data: provider });
       return;
     }
 
-    if (/^\/admin\/providers\/\d+$/.test(pathname) && req.method === "PATCH") {
+    if (/^\/admin\/api\/providers\/\d+$/.test(pathname) && req.method === "PATCH") {
       const providerId = Number(pathname.split("/").pop());
       const body = await readJsonBody(req);
       const provider = store.updateProvider(providerId, body);
-      json(res, 200, provider);
+      json(res, 200, { data: provider });
       return;
     }
 
-    if (/^\/admin\/providers\/\d+\/test$/.test(pathname) && req.method === "POST") {
-      const providerId = Number(pathname.split("/")[3]);
+    if (/^\/admin\/api\/providers\/\d+\/test$/.test(pathname) && req.method === "POST") {
+      const providerId = Number(pathname.split("/")[4]);
       const result = await testProvider(providerId);
       json(res, result.statusCode, result.payload);
       return;
     }
 
-    if (pathname === "/admin/provider-keys" && req.method === "POST") {
+    if (pathname === "/admin/api/provider-keys" && req.method === "POST") {
       const body = await readJsonBody(req);
       const key = store.addProviderKey(Number(body.providerId), {
         label: body.label,
         apiKey: body.apiKey,
         enabled: body.enabled,
       });
-      json(res, 201, key);
+      json(res, 201, { data: key });
       return;
     }
 
-    if (/^\/admin\/provider-keys\/\d+$/.test(pathname) && req.method === "PATCH") {
+    if (/^\/admin\/api\/provider-keys\/\d+$/.test(pathname) && req.method === "PATCH") {
       const keyId = Number(pathname.split("/").pop());
       const body = await readJsonBody(req);
       const key = store.updateProviderKey(keyId, body);
-      json(res, 200, key);
+      json(res, 200, { data: key });
       return;
     }
 
-    if (pathname === "/admin/model-groups" && req.method === "GET") {
-      json(res, 200, {
-        groups: store.listModelGroups(),
-        aliases: store.listModelAliases(),
-        providerKeyOptions: store.listProviderKeyOptions(),
-      });
+    if (pathname === "/admin/api/routing" && req.method === "GET") {
+      json(res, 200, { data: store.getRoutingCatalog() });
       return;
     }
 
-    if (pathname === "/admin/model-aliases" && req.method === "POST") {
+    if (/^\/admin\/api\/routing\/groups\/\d+$/.test(pathname) && req.method === "GET") {
+      const groupId = Number(pathname.split("/").pop());
+      const group = store.getRoutingGroupDetail(groupId);
+      if (!group) {
+        json(res, 404, { error: "Model group not found" });
+        return;
+      }
+      json(res, 200, { data: group });
+      return;
+    }
+
+    if (pathname === "/admin/api/model-aliases" && req.method === "POST") {
       const body = await readJsonBody(req);
       const alias = store.createModelAlias({
         name: body.name,
         groupId: Number(body.groupId),
         enabled: body.enabled,
       });
-      json(res, 201, alias);
+      json(res, 201, { data: alias });
       return;
     }
 
-    if (/^\/admin\/model-aliases\/\d+$/.test(pathname) && req.method === "PATCH") {
+    if (/^\/admin\/api\/model-aliases\/\d+$/.test(pathname) && req.method === "PATCH") {
       const aliasId = Number(pathname.split("/").pop());
       const body = await readJsonBody(req);
       const alias = store.updateModelAlias(aliasId, {
@@ -723,11 +834,11 @@ function createApp(overrides = {}) {
         groupId: body.groupId ? Number(body.groupId) : undefined,
         enabled: body.enabled,
       });
-      json(res, 200, alias);
+      json(res, 200, { data: alias });
       return;
     }
 
-    if (pathname === "/admin/model-groups" && req.method === "POST") {
+    if (pathname === "/admin/api/model-groups" && req.method === "POST") {
       const body = await readJsonBody(req);
       const group = store.createModelGroup({
         name: body.name,
@@ -735,19 +846,19 @@ function createApp(overrides = {}) {
         fallbackPolicy: body.fallbackPolicy,
         enabled: body.enabled,
       });
-      json(res, 201, group);
+      json(res, 201, { data: group });
       return;
     }
 
-    if (/^\/admin\/model-groups\/\d+$/.test(pathname) && req.method === "PATCH") {
+    if (/^\/admin\/api\/model-groups\/\d+$/.test(pathname) && req.method === "PATCH") {
       const groupId = Number(pathname.split("/").pop());
       const body = await readJsonBody(req);
       const group = store.updateModelGroup(groupId, body);
-      json(res, 200, group);
+      json(res, 200, { data: group });
       return;
     }
 
-    if (pathname === "/admin/model-routes" && req.method === "POST") {
+    if (pathname === "/admin/api/model-routes" && req.method === "POST") {
       const body = await readJsonBody(req);
       const route = store.addModelRoute(Number(body.groupId), {
         providerKeyId: Number(body.providerKeyId),
@@ -758,11 +869,11 @@ function createApp(overrides = {}) {
         monthlyLimit: body.monthlyLimit,
         warningThreshold: body.warningThreshold,
       });
-      json(res, 201, route);
+      json(res, 201, { data: route });
       return;
     }
 
-    if (/^\/admin\/model-routes\/\d+$/.test(pathname) && req.method === "PATCH") {
+    if (/^\/admin\/api\/model-routes\/\d+$/.test(pathname) && req.method === "PATCH") {
       const routeId = Number(pathname.split("/").pop());
       const body = await readJsonBody(req);
       const route = store.updateModelRoute(routeId, {
@@ -774,72 +885,97 @@ function createApp(overrides = {}) {
         monthlyLimit: body.monthlyLimit,
         warningThreshold: body.warningThreshold,
       });
-      json(res, 200, route);
+      json(res, 200, { data: route });
       return;
     }
 
-    if (/^\/admin\/model-routes\/\d+$/.test(pathname) && req.method === "DELETE") {
+    if (/^\/admin\/api\/model-routes\/\d+$/.test(pathname) && req.method === "DELETE") {
       const routeId = Number(pathname.split("/").pop());
       store.deleteModelRoute(routeId);
       noContent(res);
       return;
     }
 
-    if (pathname === "/admin/quotas" && req.method === "GET") {
-      json(res, 200, { items: store.listQuotaItems() });
-      return;
-    }
-
-    if (/^\/admin\/quotas\/\d+$/.test(pathname) && req.method === "PATCH") {
-      const routeId = Number(pathname.split("/").pop());
-      const body = await readJsonBody(req);
-      const route = store.updateQuota(routeId, body);
-      json(res, 200, route);
-      return;
-    }
-
-    if (/^\/admin\/quotas\/\d+\/reset$/.test(pathname) && req.method === "POST") {
-      const routeId = Number(pathname.split("/")[3]);
-      const body = await readJsonBody(req).catch(() => ({}));
-      const route = store.resetQuota(routeId, body.period || "all");
-      json(res, 200, route);
-      return;
-    }
-
-    if (pathname === "/admin/logs/requests" && req.method === "GET") {
-      json(res, 200, { items: store.listRequestLogs(100) });
-      return;
-    }
-
-    if (pathname === "/admin/logs/switches" && req.method === "GET") {
-      json(res, 200, { items: store.listSwitchEvents(100) });
-      return;
-    }
-
-    if (pathname === "/admin/system/settings" && req.method === "GET") {
+    if (pathname === "/admin/api/quotas" && req.method === "GET") {
+      const url = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
       json(res, 200, {
-        gatewayApiKeyConfigured: Boolean(store.getSetting("gateway_api_key_hash")),
-        gateway: {
-          ...buildGatewaySnippet(req, Boolean(store.getSetting("gateway_api_key_hash"))),
-          exampleModel: store.getPreferredExternalModelName(),
+        data: {
+          items: store.listQuotaItems({
+            groupId: toOptionalNumber(url.searchParams.get("groupId")),
+            providerId: toOptionalNumber(url.searchParams.get("providerId")),
+            status: url.searchParams.get("status") || undefined,
+          }),
+          groups: store.listModelGroups().map((group) => ({ id: group.id, name: group.name })),
+          providers: store.listProviders().map((provider) => ({ id: provider.id, name: provider.name })),
         },
       });
       return;
     }
 
-    if (pathname === "/admin/system/settings" && req.method === "PATCH") {
+    if (/^\/admin\/api\/quotas\/\d+$/.test(pathname) && req.method === "PATCH") {
+      const routeId = Number(pathname.split("/").pop());
       const body = await readJsonBody(req);
-      if (body.gatewayApiKey) {
-        store.setSetting("gateway_api_key_hash", hashToken(body.gatewayApiKey));
-      }
+      const route = store.updateQuota(routeId, body);
+      json(res, 200, { data: route });
+      return;
+    }
+
+    if (/^\/admin\/api\/quotas\/\d+\/reset$/.test(pathname) && req.method === "POST") {
+      const routeId = Number(pathname.split("/")[4]);
+      const body = await readJsonBody(req).catch(() => ({}));
+      const route = store.resetQuota(routeId, body.period || "all");
+      json(res, 200, { data: route });
+      return;
+    }
+
+    if (pathname === "/admin/api/logs/requests" && req.method === "GET") {
+      const url = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
       json(res, 200, {
-        ok: true,
-        gatewayApiKeyConfigured: Boolean(store.getSetting("gateway_api_key_hash")),
+        data: {
+          items: store.listRequestLogs({
+            limit: toOptionalNumber(url.searchParams.get("limit")),
+            model: url.searchParams.get("model") || undefined,
+            provider: url.searchParams.get("provider") || undefined,
+            status: url.searchParams.get("status") || undefined,
+          }),
+          models: store.listDistinctModels(),
+          providers: store.listDistinctProviders(),
+        },
       });
       return;
     }
 
-    if (pathname === "/admin/system/password" && req.method === "POST") {
+    if (pathname === "/admin/api/logs/switches" && req.method === "GET") {
+      const url = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
+      json(res, 200, {
+        data: {
+          items: store.listSwitchEvents({
+            limit: toOptionalNumber(url.searchParams.get("limit")),
+            model: url.searchParams.get("model") || undefined,
+            reason: url.searchParams.get("reason") || undefined,
+          }),
+          models: store.listDistinctModels(),
+          reasons: store.listDistinctSwitchReasons(),
+        },
+      });
+      return;
+    }
+
+    if (pathname === "/admin/api/system" && req.method === "GET") {
+      json(res, 200, { data: buildSystemPayload(req) });
+      return;
+    }
+
+    if (pathname === "/admin/api/system" && req.method === "PATCH") {
+      const body = await readJsonBody(req);
+      if (body.gatewayApiKey) {
+        store.setSetting("gateway_api_key_hash", hashToken(body.gatewayApiKey));
+      }
+      json(res, 200, { data: buildSystemPayload(req) });
+      return;
+    }
+
+    if (pathname === "/admin/api/system/password" && req.method === "POST") {
       const body = await readJsonBody(req);
       const admin = store.getAdminByUsername("admin");
       if (!body.currentPassword || !verifyPassword(body.currentPassword, admin.password_hash, admin.salt)) {
@@ -852,7 +988,12 @@ function createApp(overrides = {}) {
       }
       const updated = createPasswordHash(body.newPassword);
       store.updateAdminPassword(admin.id, { passwordHash: updated.hash, salt: updated.salt });
-      json(res, 200, { ok: true });
+      json(res, 200, { data: { ok: true } });
+      return;
+    }
+
+    if (pathname.startsWith("/admin/")) {
+      sendStaticFile(res, path.join(adminDir, "index.html"), { "Cache-Control": "no-cache" });
       return;
     }
 
@@ -864,18 +1005,8 @@ function createApp(overrides = {}) {
       const url = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
       const pathname = url.pathname;
 
-      if (pathname === "/" || pathname === "/admin") {
-        sendStaticFile(res, path.join(publicDir, "index.html"), "text/html; charset=utf-8");
-        return;
-      }
-
-      if (pathname === "/app.js") {
-        sendStaticFile(res, path.join(publicDir, "app.js"), "application/javascript; charset=utf-8");
-        return;
-      }
-
-      if (pathname === "/styles.css") {
-        sendStaticFile(res, path.join(publicDir, "styles.css"), "text/css; charset=utf-8");
+      if (pathname === "/") {
+        text(res, 302, "Redirecting to /admin", { Location: "/admin" });
         return;
       }
 
@@ -902,7 +1033,7 @@ function createApp(overrides = {}) {
         return;
       }
 
-      if (pathname.startsWith("/admin/")) {
+      if (pathname === "/admin" || pathname.startsWith("/admin/")) {
         await handleAdmin(req, res, pathname);
         return;
       }

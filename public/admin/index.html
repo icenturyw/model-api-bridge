@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenClaw Router Console</title>
+    <link rel="stylesheet" href="/admin/styles.css" />
+  </head>
+  <body>
+    <div id="authRoot" class="auth-shell">
+      <section class="auth-card" id="setupCard" hidden>
+        <p class="eyebrow">Initialization</p>
+        <h1>创建管理员账号</h1>
+        <p class="muted">初始化完成后，所有管理操作都通过会话 Cookie 保护。</p>
+        <form id="setupForm" class="stack-form">
+          <label>
+            管理员密码
+            <input name="password" type="password" minlength="8" required />
+          </label>
+          <label>
+            Gateway API Key
+            <input name="gatewayApiKey" type="text" placeholder="可选，客户端访问网关时使用" />
+          </label>
+          <button type="submit">初始化并进入后台</button>
+        </form>
+      </section>
+
+      <section class="auth-card" id="loginCard" hidden>
+        <p class="eyebrow">Authentication</p>
+        <h1>进入控制台</h1>
+        <p class="muted">登录后可查看路由、额度、日志与系统设置。</p>
+        <form id="loginForm" class="stack-form">
+          <label>
+            密码
+            <input name="password" type="password" required />
+          </label>
+          <button type="submit">登录</button>
+        </form>
+      </section>
+    </div>
+
+    <div id="appRoot" hidden></div>
+
+    <dialog id="modal" class="modal"></dialog>
+
+    <script type="module" src="/admin/main.js"></script>
+  </body>
+</html>

@@ -195,3 +195,108 @@ test("deprioritizes routes for the rest of the day after a 429", () => {
   store.close();
   fs.rmSync(dbPath, { force: true });
 });
+
+test("accepts provider keys with blank api_key for unauthenticated upstreams", () => {
+  const dbPath = createTempDbPath();
+  const store = new Store(dbPath);
+  const provider = store.createProvider({
+    name: "lm-studio",
+    baseUrl: "http://127.0.0.1:1234/v1",
+    keys: [{ label: "local", apiKey: "" }],
+  });
+  const group = store.createModelGroup({ name: "chat-main" });
+
+  store.addModelRoute(group.id, {
+    providerKeyId: provider.keys[0].id,
+    providerModelName: "local-model",
+  });
+
+  const key = store.getProviderKey(provider.keys[0].id);
+  const plan = store.getRoutingPlan("chat-main");
+  const models = store.listRoutableModels();
+
+  assert.equal(key.api_key, "");
+  assert.equal(plan.routes.length, 1);
+  assert.equal(plan.routes[0].provider_name, "lm-studio");
+  assert.equal(models[0].name, "chat-main");
+
+  store.close();
+  fs.rmSync(dbPath, { force: true });
+});
+
+test("filters request logs and quota items for the admin console", () => {
+  const dbPath = createTempDbPath();
+  const store = new Store(dbPath);
+  const provider = store.createProvider({
+    name: "modelscope",
+    baseUrl: "https://api-inference.modelscope.cn/v1",
+    keys: [{ label: "primary", apiKey: "ms-key" }],
+  });
+  const group = store.createModelGroup({ name: "chat-main" });
+  const route = store.addModelRoute(group.id, {
+    providerKeyId: provider.keys[0].id,
+    providerModelName: "Qwen/Qwen3.5-27B",
+    dailyLimit: 1,
+    warningThreshold: 50,
+  });
+
+  store.consumeRoute(route.id);
+  store.recordRequestLog({
+    requestedModel: "chat-main",
+    routedProvider: "modelscope",
+    routedModel: "Qwen/Qwen3.5-27B",
+    statusCode: 500,
+    errorCode: "status-500",
+    attempts: 1,
+  });
+  store.recordRequestLog({
+    requestedModel: "chat-main",
+    routedProvider: "modelscope",
+    routedModel: "Qwen/Qwen3.5-27B",
+    statusCode: 200,
+    attempts: 1,
+  });
+
+  const filteredLogs = store.listRequestLogs({
+    model: "chat-main",
+    provider: "modelscope",
+    status: "error",
+  });
+  const exhaustedQuotas = store.listQuotaItems({ status: "exhausted" });
+
+  assert.equal(filteredLogs.length, 1);
+  assert.equal(filteredLogs[0].error_code, "status-500");
+  assert.equal(exhaustedQuotas.length, 1);
+  assert.equal(exhaustedQuotas[0].id, route.id);
+
+  store.close();
+  fs.rmSync(dbPath, { force: true });
+});
+
+test("enforces provider-level requests per minute limits", () => {
+  const dbPath = createTempDbPath();
+  const store = new Store(dbPath);
+  const provider = store.createProvider({
+    name: "modelscope",
+    baseUrl: "https://api-inference.modelscope.cn/v1",
+    requestsPerMinute: 1,
+    keys: [{ label: "primary", apiKey: "ms-key" }],
+  });
+  const group = store.createModelGroup({ name: "chat-main" });
+  const route = store.addModelRoute(group.id, {
+    providerKeyId: provider.keys[0].id,
+    providerModelName: "Qwen/Qwen3.5-27B",
+  });
+
+  const firstConsume = store.consumeRoute(route.id);
+  assert.equal(firstConsume.daily_used, 1);
+
+  const plan = store.getRoutingPlan("chat-main");
+  assert.equal(plan.routes[0].minute_rate_limited, true);
+  assert.equal(plan.routes[0].skip_reason, "provider-rate-limited");
+
+  assert.throws(() => store.consumeRoute(route.id), /Provider minute rate limit exhausted/);
+
+  store.close();
+  fs.rmSync(dbPath, { force: true });
+});

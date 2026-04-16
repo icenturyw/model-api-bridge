@@ -26,6 +26,10 @@ function monthKey(input) {
   return new Date(input).toISOString().slice(0, 7);
 }
 
+function minuteKey(input) {
+  return new Date(input).toISOString().slice(0, 16);
+}
+
 function toFlag(value, fallback = 1) {
   if (value === undefined) {
     return fallback;
@@ -75,6 +79,9 @@ class Store {
         base_url TEXT NOT NULL,
         enabled INTEGER NOT NULL DEFAULT 1,
         timeout_ms INTEGER NOT NULL DEFAULT 25000,
+        requests_per_minute INTEGER NOT NULL DEFAULT 0,
+        minute_window_started_at TEXT,
+        minute_window_count INTEGER NOT NULL DEFAULT 0,
         priority INTEGER NOT NULL DEFAULT 100,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -161,6 +168,11 @@ class Store {
         reason TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
+
+      CREATE INDEX IF NOT EXISTS idx_request_logs_created_at ON request_logs(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_request_logs_requested_model ON request_logs(requested_model);
+      CREATE INDEX IF NOT EXISTS idx_switch_events_created_at ON switch_events(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_switch_events_requested_model ON switch_events(requested_model);
     `);
 
     const requestLogColumns = this.db.prepare("PRAGMA table_info(request_logs)").all();
@@ -171,6 +183,17 @@ class Store {
     const modelRouteColumns = this.db.prepare("PRAGMA table_info(model_routes)").all();
     if (!modelRouteColumns.some((column) => column.name === "last_rate_limited_at")) {
       this.db.exec("ALTER TABLE model_routes ADD COLUMN last_rate_limited_at TEXT");
+    }
+
+    const providerColumns = this.db.prepare("PRAGMA table_info(providers)").all();
+    if (!providerColumns.some((column) => column.name === "requests_per_minute")) {
+      this.db.exec("ALTER TABLE providers ADD COLUMN requests_per_minute INTEGER NOT NULL DEFAULT 0");
+    }
+    if (!providerColumns.some((column) => column.name === "minute_window_started_at")) {
+      this.db.exec("ALTER TABLE providers ADD COLUMN minute_window_started_at TEXT");
+    }
+    if (!providerColumns.some((column) => column.name === "minute_window_count")) {
+      this.db.exec("ALTER TABLE providers ADD COLUMN minute_window_count INTEGER NOT NULL DEFAULT 0");
     }
 
     this.ensureVolcengineDedicatedGroup();
@@ -271,8 +294,9 @@ class Store {
       const info = this.db
         .prepare(
           `
-            INSERT INTO providers (name, base_url, enabled, timeout_ms, priority, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO providers
+              (name, base_url, enabled, timeout_ms, requests_per_minute, minute_window_started_at, minute_window_count, priority, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, NULL, 0, ?, ?, ?)
           `
         )
         .run(
@@ -280,6 +304,7 @@ class Store {
           payload.baseUrl,
           toFlag(payload.enabled, 1),
           payload.timeoutMs || 25000,
+          payload.requestsPerMinute ?? 0,
           payload.priority ?? 100,
           now,
           now
@@ -309,7 +334,7 @@ class Store {
       }));
 
     return {
-      ...provider,
+      ...this.hydrateProviderRateState(provider),
       keys,
     };
   }
@@ -317,7 +342,8 @@ class Store {
   listProviders() {
     const providers = this.db
       .prepare("SELECT * FROM providers ORDER BY priority ASC, name COLLATE NOCASE ASC")
-      .all();
+      .all()
+      .map((provider) => this.hydrateProviderRateState(provider));
     const keys = this.db
       .prepare("SELECT * FROM provider_keys ORDER BY provider_id ASC, id DESC")
       .all();
@@ -358,7 +384,7 @@ class Store {
       .prepare(
         `
           UPDATE providers
-          SET name = ?, base_url = ?, enabled = ?, timeout_ms = ?, priority = ?, updated_at = ?
+          SET name = ?, base_url = ?, enabled = ?, timeout_ms = ?, requests_per_minute = ?, priority = ?, updated_at = ?
           WHERE id = ?
         `
       )
@@ -367,6 +393,7 @@ class Store {
         payload.baseUrl ?? existing.base_url,
         payload.enabled === undefined ? existing.enabled : toFlag(payload.enabled),
         payload.timeoutMs ?? existing.timeout_ms,
+        payload.requestsPerMinute ?? existing.requests_per_minute,
         payload.priority ?? existing.priority,
         now,
         providerId
@@ -377,6 +404,7 @@ class Store {
 
   addProviderKey(providerId, payload) {
     const now = nowIso();
+    const apiKey = payload.apiKey ?? "";
     const info = this.db
       .prepare(
         `
@@ -385,7 +413,7 @@ class Store {
           VALUES (?, ?, ?, ?, 'healthy', 0, ?, ?)
         `
       )
-      .run(providerId, payload.label || `key-${Date.now()}`, payload.apiKey, toFlag(payload.enabled, 1), now, now);
+      .run(providerId, payload.label || `key-${Date.now()}`, apiKey, toFlag(payload.enabled, 1), now, now);
 
     return this.getProviderKey(Number(info.lastInsertRowid));
   }
@@ -395,7 +423,8 @@ class Store {
       .prepare(
         `
           SELECT provider_keys.*, providers.name AS provider_name, providers.base_url, providers.timeout_ms,
-                 providers.priority, providers.enabled AS provider_enabled
+                 providers.priority, providers.enabled AS provider_enabled,
+                 providers.requests_per_minute, providers.minute_window_started_at, providers.minute_window_count
           FROM provider_keys
           JOIN providers ON providers.id = provider_keys.provider_id
           WHERE provider_keys.id = ?
@@ -405,7 +434,7 @@ class Store {
 
     return row
       ? {
-          ...row,
+          ...this.hydrateProviderRateState(row),
           masked_key: maskKey(row.api_key),
         }
       : null;
@@ -726,11 +755,15 @@ class Store {
         `
           SELECT model_routes.*,
                  model_groups.name AS group_name,
+                 providers.id AS provider_id,
                  providers.name AS provider_name,
                  providers.base_url,
                  providers.priority AS provider_priority,
                  providers.timeout_ms,
                  providers.enabled AS provider_enabled,
+                 providers.requests_per_minute,
+                 providers.minute_window_started_at,
+                 providers.minute_window_count,
                  provider_keys.label AS provider_key_label,
                  provider_keys.api_key,
                  provider_keys.enabled AS key_enabled,
@@ -745,7 +778,7 @@ class Store {
       )
       .get(routeId);
 
-    return route ? this.hydrateQuotaState(route) : null;
+    return route ? this.hydrateProviderRateState(this.hydrateQuotaState(route)) : null;
   }
 
   updateModelRoute(routeId, payload) {
@@ -792,11 +825,11 @@ class Store {
     });
   }
 
-  listQuotaItems() {
-    return this.db
+  listQuotaItems(filters = {}) {
+    const items = this.db
       .prepare(
         `
-          SELECT model_routes.id, model_groups.name AS group_name, model_routes.provider_model_name,
+          SELECT model_routes.id, model_routes.group_id, provider_keys.provider_id, model_groups.name AS group_name, model_routes.provider_model_name,
                  model_routes.daily_limit, model_routes.monthly_limit, model_routes.daily_used, model_routes.monthly_used, model_routes.warning_threshold,
                  model_routes.enabled, providers.name AS provider_name, provider_keys.label AS provider_key_label,
                  provider_keys.health_status, providers.enabled AS provider_enabled, provider_keys.enabled AS key_enabled,
@@ -810,6 +843,25 @@ class Store {
       )
       .all()
       .map((row) => this.hydrateQuotaState(row));
+
+    return items.filter((item) => {
+      if (filters.groupId && item.group_id !== Number(filters.groupId)) {
+        return false;
+      }
+      if (filters.providerId && item.provider_id !== Number(filters.providerId)) {
+        return false;
+      }
+      if (filters.status === "warning" && !item.warning_reached) {
+        return false;
+      }
+      if (filters.status === "exhausted" && !item.quota_exhausted) {
+        return false;
+      }
+      if (filters.status === "normal" && (item.warning_reached || item.quota_exhausted)) {
+        return false;
+      }
+      return true;
+    });
   }
 
   updateQuota(routeId, payload) {
@@ -925,6 +977,52 @@ class Store {
     };
   }
 
+  hydrateProviderRateState(provider) {
+    const now = nowIso();
+    let minuteWindowStartedAt = provider.minute_window_started_at || null;
+    let minuteWindowCount = provider.minute_window_count ?? 0;
+    let changed = false;
+
+    if (provider.requests_per_minute > 0) {
+      if (!minuteWindowStartedAt || minuteKey(minuteWindowStartedAt) !== minuteKey(now)) {
+        minuteWindowStartedAt = now;
+        minuteWindowCount = 0;
+        changed = provider.id !== undefined;
+      }
+    } else if (minuteWindowCount !== 0 || minuteWindowStartedAt) {
+      minuteWindowStartedAt = null;
+      minuteWindowCount = 0;
+      changed = provider.id !== undefined;
+    }
+
+    if (changed) {
+      this.db
+        .prepare(
+          `
+            UPDATE providers
+            SET minute_window_started_at = ?, minute_window_count = ?, updated_at = ?
+            WHERE id = ?
+          `
+        )
+        .run(minuteWindowStartedAt, minuteWindowCount, now, provider.id);
+    }
+
+    const minuteRemaining =
+      provider.requests_per_minute > 0
+        ? Math.max(provider.requests_per_minute - minuteWindowCount, 0)
+        : null;
+    const minuteRateLimited =
+      provider.requests_per_minute > 0 && minuteWindowCount >= provider.requests_per_minute;
+
+    return {
+      ...provider,
+      minute_window_started_at: minuteWindowStartedAt,
+      minute_window_count: minuteWindowCount,
+      minute_remaining: minuteRemaining,
+      minute_rate_limited: minuteRateLimited,
+    };
+  }
+
   resolveModelTarget(requestedModel) {
     const alias = this.db
       .prepare(
@@ -984,6 +1082,9 @@ class Store {
                  providers.priority AS provider_priority,
                  providers.timeout_ms,
                  providers.enabled AS provider_enabled,
+                 providers.requests_per_minute,
+                 providers.minute_window_started_at,
+                 providers.minute_window_count,
                  provider_keys.label AS provider_key_label,
                  provider_keys.api_key,
                  provider_keys.enabled AS key_enabled,
@@ -1003,7 +1104,7 @@ class Store {
       )
       .all(group.id, dateKey(nowIso()), group.forced_route_id || -1)
       .map((route) => {
-        const hydrated = this.hydrateQuotaState(route);
+        const hydrated = this.hydrateProviderRateState(this.hydrateQuotaState(route));
         let skipReason = null;
         if (!hydrated.enabled) {
           skipReason = "route-disabled";
@@ -1013,6 +1114,8 @@ class Store {
           skipReason = "key-disabled";
         } else if (hydrated.health_status === "unhealthy") {
           skipReason = "health-unhealthy";
+        } else if (hydrated.minute_rate_limited) {
+          skipReason = "provider-rate-limited";
         } else if (hydrated.quota_exhausted) {
           skipReason = "quota-exhausted";
         }
@@ -1036,6 +1139,12 @@ class Store {
       if (route.quota_exhausted) {
         throw new Error("Route quota exhausted");
       }
+      const provider = this.hydrateProviderRateState(
+        this.db.prepare("SELECT * FROM providers WHERE id = ?").get(route.provider_id)
+      );
+      if (provider.requests_per_minute > 0 && provider.minute_window_count >= provider.requests_per_minute) {
+        throw new Error("Provider minute rate limit exhausted");
+      }
       this.db
         .prepare(
           `
@@ -1045,6 +1154,22 @@ class Store {
           `
         )
         .run(route.daily_used + 1, route.monthly_used + 1, nowIso(), routeId);
+      if (provider.requests_per_minute > 0) {
+        this.db
+          .prepare(
+            `
+              UPDATE providers
+              SET minute_window_started_at = ?, minute_window_count = ?, updated_at = ?
+              WHERE id = ?
+            `
+          )
+          .run(
+            provider.minute_window_started_at || nowIso(),
+            provider.minute_window_count + 1,
+            nowIso(),
+            provider.id
+          );
+      }
       return this.getModelRoute(routeId);
     });
   }
@@ -1073,8 +1198,39 @@ class Store {
       );
   }
 
-  listRequestLogs(limit = 100) {
-    return this.db.prepare("SELECT * FROM request_logs ORDER BY id DESC LIMIT ?").all(limit);
+  listRequestLogs(options = {}) {
+    if (typeof options === "number") {
+      options = { limit: options };
+    }
+    const limit = Number(options.limit) > 0 ? Number(options.limit) : 100;
+    const clauses = [];
+    const values = [];
+
+    if (options.model) {
+      clauses.push("requested_model = ?");
+      values.push(options.model);
+    }
+
+    if (options.provider) {
+      clauses.push("routed_provider = ?");
+      values.push(options.provider);
+    }
+
+    if (options.status) {
+      if (options.status === "success") {
+        clauses.push("status_code >= 200 AND status_code < 400");
+      } else if (options.status === "error") {
+        clauses.push("(status_code IS NULL OR status_code >= 400)");
+      } else if (/^\\d{3}$/.test(String(options.status))) {
+        clauses.push("status_code = ?");
+        values.push(Number(options.status));
+      }
+    }
+
+    const whereClause = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    return this.db
+      .prepare(`SELECT * FROM request_logs ${whereClause} ORDER BY id DESC LIMIT ?`)
+      .all(...values, limit);
   }
 
   recordSwitch(payload) {
@@ -1088,8 +1244,28 @@ class Store {
       .run(payload.requestedModel, payload.fromTarget, payload.toTarget, payload.reason, nowIso());
   }
 
-  listSwitchEvents(limit = 100) {
-    return this.db.prepare("SELECT * FROM switch_events ORDER BY id DESC LIMIT ?").all(limit);
+  listSwitchEvents(options = {}) {
+    if (typeof options === "number") {
+      options = { limit: options };
+    }
+    const limit = Number(options.limit) > 0 ? Number(options.limit) : 100;
+    const clauses = [];
+    const values = [];
+
+    if (options.model) {
+      clauses.push("requested_model = ?");
+      values.push(options.model);
+    }
+
+    if (options.reason) {
+      clauses.push("reason = ?");
+      values.push(options.reason);
+    }
+
+    const whereClause = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    return this.db
+      .prepare(`SELECT * FROM switch_events ${whereClause} ORDER BY id DESC LIMIT ?`)
+      .all(...values, limit);
   }
 
   markProviderKeySuccess(keyId) {
@@ -1140,14 +1316,16 @@ class Store {
       .prepare(
         `
           SELECT provider_keys.id, provider_keys.label, provider_keys.api_key, provider_keys.enabled, provider_keys.health_status,
-                 providers.name AS provider_name, providers.base_url, providers.timeout_ms, providers.enabled AS provider_enabled
+                 providers.name AS provider_name, providers.base_url, providers.timeout_ms, providers.enabled AS provider_enabled,
+                 providers.requests_per_minute, providers.minute_window_started_at, providers.minute_window_count
           FROM provider_keys
           JOIN providers ON providers.id = provider_keys.provider_id
           WHERE provider_keys.enabled = 1 AND providers.enabled = 1
           ORDER BY providers.priority ASC, provider_keys.id ASC
         `
       )
-      .all();
+      .all()
+      .map((target) => this.hydrateProviderRateState(target));
   }
 
   listRoutableModels() {
@@ -1199,7 +1377,7 @@ class Store {
       this.db
         .prepare("SELECT COUNT(*) AS total FROM request_logs WHERE substr(created_at, 1, 10) = ?")
         .get(dateKey(nowIso())).total || 0;
-    const recentSwitches = this.listSwitchEvents(10);
+    const recentSwitches = this.listSwitchEvents({ limit: 10 });
     const soonExhausted = quotas
       .filter((item) => item.warning_reached || item.quota_exhausted)
       .slice(0, 10);
@@ -1223,6 +1401,141 @@ class Store {
       soonExhausted,
       recentSwitches,
     };
+  }
+
+  getOverview() {
+    const summary = this.getDashboardSummary();
+    const recentErrors = this.db
+      .prepare(
+        `
+          SELECT *
+          FROM request_logs
+          WHERE status_code IS NULL OR status_code >= 400
+          ORDER BY id DESC
+          LIMIT 10
+        `
+      )
+      .all();
+
+    return {
+      ...summary,
+      recentErrors,
+    };
+  }
+
+  getProviderDetail(providerId) {
+    const provider = this.getProvider(providerId);
+    if (!provider) {
+      return null;
+    }
+
+    const routeStats = this.db
+      .prepare(
+        `
+          SELECT COUNT(*) AS route_count
+          FROM model_routes
+          JOIN provider_keys ON provider_keys.id = model_routes.provider_key_id
+          WHERE provider_keys.provider_id = ?
+        `
+      )
+      .get(providerId);
+
+    const attachedGroups = this.db
+      .prepare(
+        `
+          SELECT DISTINCT model_groups.id, model_groups.name
+          FROM model_routes
+          JOIN provider_keys ON provider_keys.id = model_routes.provider_key_id
+          JOIN model_groups ON model_groups.id = model_routes.group_id
+          WHERE provider_keys.provider_id = ?
+          ORDER BY model_groups.name COLLATE NOCASE ASC
+        `
+      )
+      .all(providerId);
+
+    return {
+      ...provider,
+      stats: {
+        routeCount: routeStats.route_count,
+        keyCount: provider.keys.length,
+      },
+      attachedGroups,
+    };
+  }
+
+  listProvidersForAdmin() {
+    const routeCounts = new Map(
+      this.db
+        .prepare(
+          `
+            SELECT provider_keys.provider_id, COUNT(*) AS route_count
+            FROM model_routes
+            JOIN provider_keys ON provider_keys.id = model_routes.provider_key_id
+            GROUP BY provider_keys.provider_id
+          `
+        )
+        .all()
+        .map((row) => [row.provider_id, row.route_count])
+    );
+
+    return this.listProviders().map((provider) => ({
+      ...provider,
+      stats: {
+        keyCount: provider.keys.length,
+        routeCount: routeCounts.get(provider.id) || 0,
+        healthyKeys: provider.keys.filter((key) => key.health_status === "healthy").length,
+        degradedKeys: provider.keys.filter((key) => key.health_status === "degraded").length,
+        unhealthyKeys: provider.keys.filter((key) => key.health_status === "unhealthy").length,
+      },
+    }));
+  }
+
+  getRoutingCatalog() {
+    return {
+      groups: this.listModelGroups(),
+      aliases: this.listModelAliases(),
+      providerKeyOptions: this.listProviderKeyOptions(),
+    };
+  }
+
+  getRoutingGroupDetail(groupId) {
+    const group = this.getModelGroup(groupId);
+    if (!group) {
+      return null;
+    }
+
+    return {
+      ...group,
+      aliases: this.listModelAliases().filter((alias) => alias.group_id === groupId),
+    };
+  }
+
+  getSystemSummary() {
+    return {
+      gatewayApiKeyConfigured: Boolean(this.getSetting("gateway_api_key_hash")),
+      preferredExternalModelName: this.getPreferredExternalModelName(),
+    };
+  }
+
+  listDistinctModels() {
+    return this.db
+      .prepare("SELECT DISTINCT requested_model FROM request_logs ORDER BY requested_model COLLATE NOCASE ASC")
+      .all()
+      .map((row) => row.requested_model);
+  }
+
+  listDistinctProviders() {
+    return this.db
+      .prepare("SELECT DISTINCT name FROM providers ORDER BY name COLLATE NOCASE ASC")
+      .all()
+      .map((row) => row.name);
+  }
+
+  listDistinctSwitchReasons() {
+    return this.db
+      .prepare("SELECT DISTINCT reason FROM switch_events ORDER BY reason COLLATE NOCASE ASC")
+      .all()
+      .map((row) => row.reason);
   }
 
   getPreferredExternalModelName() {
