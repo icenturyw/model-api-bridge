@@ -11,10 +11,13 @@
 - 配额感知路由：按 `Provider Key + Model Route` 统计日/月请求额度
 - Provider 频率限制：支持给单个 Provider 配置每分钟请求频率上限，超限后自动切到下一条可用路由
 - 自动回退：遇到 `401`、`403`、`429`、`5xx`、超时、网络错误时切到下一条可用路由
-- 404 自愈：上游明确返回“模型不存在 / 无权限”时，自动删除失效路由并继续尝试下一条
+- 404 自愈：上游明确返回"模型不存在 / 无权限"时，自动删除失效路由并继续尝试下一条
 - 健康检查：支持被动失败累计和主动 `/v1/models` 探测
 - Web 管理后台：概览、服务商详情、模型组详情、额度筛选、请求日志、切换日志、系统设置
 - SQLite 持久化：适合单机自托管，不依赖外部数据库
+- 请求体大小限制：默认 10MB，防止内存耗尽攻击
+- 时序安全比较：Gateway API Key 校验使用 `crypto.timingSafeEqual`，防止时序攻击
+- 优雅关闭：捕获 SIGTERM / SIGINT 信号，确保进程退出时正确关闭数据库和 HTTP 连接
 
 ## 架构图
 
@@ -50,6 +53,14 @@ npm start
 
 ```bash
 node src/server.js
+```
+
+Windows 环境下可使用部署脚本：
+
+```bat
+scripts\start.bat
+scripts\stop.bat
+scripts\restart.bat
 ```
 
 默认地址：
@@ -111,13 +122,21 @@ Model: chat-main
 - 日志管理：请求日志、切换日志、筛选条件
 - 系统设置：Gateway API Key、客户端接入片段
 
+管理台采用模块化前端架构，基于 Hash 路由实现视图切换，每个视图独立加载数据，UI 使用现代蓝白配色方案。
+
 ## 数据与目录
 
 项目主要目录：
 
 - `src/`: Node.js 后端
-- `public/`: 静态资源
-- `public/admin/`: 新版管理后台 SPA 资源
+- `public/admin/`: 管理后台 SPA 资源
+  - `views/`: 视图模块（overview / providers / routing / quotas / logs / system）
+  - `components/`: 共享组件（modal / table / form / status）
+  - `main.js`: 主控制器（路由、状态、事件）
+  - `router.js`: Hash 路由系统
+  - `api.js`: API 封装
+  - `utils.js`: 工具函数
+- `scripts/`: 部署脚本（`start.sh` / `stop.sh` / `restart.sh` / `start.bat` / `stop.bat` / `restart.bat`）
 - `data/`: SQLite 运行数据
 - `data-backups/`: 数据快照
 - `assets/`: README 展示图
@@ -152,10 +171,14 @@ npm test
 ## 设计取舍
 
 - 使用 SQLite，换来更低部署成本和更少外部依赖
-- 配额单位按“请求次数”计，而不是 token 或金额
+- 配额单位按"请求次数"计，而不是 token 或金额
 - 当前 fallback 仍以同一模型组内切换为主，不做复杂跨等级降级
 - Provider API Key 会持久化到本地数据库，适合可信自托管环境
 - Gateway API Key 只存哈希值，不回显明文
+- Gateway API Key 校验使用 `crypto.timingSafeEqual`，防止时序攻击
+- 前端模板对所有用户输入进行 HTML 转义，防止存储型 XSS
+- 请求体默认限制 10MB，防止内存耗尽
+- 进程捕获 SIGTERM / SIGINT 信号，确保优雅关闭
 
 ## 后续适合继续扩展的方向
 

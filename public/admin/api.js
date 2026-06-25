@@ -1,7 +1,7 @@
 export async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...(options.headers || {}),
     },
     ...options,
@@ -13,14 +13,13 @@ export async function api(path, options = {}) {
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error?.message || payload.error || payload.detail || "Request failed");
+    throw new Error(payload.error?.message || payload.error || payload.detail || 'Request failed');
   }
-
-  return payload.data ?? payload;
+  return payload;
 }
 
-export function jsonBody(value) {
-  return JSON.stringify(value);
+export function jsonBody(data) {
+  return JSON.stringify(data);
 }
 
 export function boolValue(form, name) {
@@ -29,7 +28,7 @@ export function boolValue(form, name) {
 
 export function numberValue(form, name) {
   const value = form.elements[name]?.value;
-  if (value === "" || value === undefined) {
+  if (value === '' || value === undefined) {
     return undefined;
   }
   return Number(value);

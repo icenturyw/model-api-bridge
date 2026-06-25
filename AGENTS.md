@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-`src/` contains the Node.js backend: `server.js` is the entrypoint, `app.js` wires HTTP routes and proxy logic, `config.js` reads environment-driven settings, and `store.js` manages SQLite persistence. `public/` holds the admin UI assets (`index.html`, `app.js`, `styles.css`). Runtime SQLite files live in `data/`; timestamped snapshots in `data-backups/` are operational artifacts and should not be edited by hand.
+`src/` contains the Node.js backend: `server.js` is the entrypoint, `app.js` wires HTTP routes and proxy logic, `config.js` reads environment-driven settings, and `store.js` manages SQLite persistence. `public/admin/` holds the admin SPA: `main.js` is the controller, `router.js` provides hash-based routing, `api.js` wraps fetch, `utils.js` has shared helpers, `views/` contains one module per view, and `components/` holds reusable UI pieces (modal, table, form, status). `scripts/` contains deployment scripts for both Linux (`.sh`) and Windows (`.bat`). Runtime SQLite files live in `data/`; timestamped snapshots in `data-backups/` are operational artifacts and should not be edited by hand.
 
 ## Build, Test, and Development Commands
 Use Node.js 22 or newer.

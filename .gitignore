@@ -4,5 +4,7 @@ data/router.db
 data/router.db-shm
 data/router.db-wal
 data/router.pid
-logs/server.log
+data/server-err.log
+data/server-out.log
+logs/
 node_modules/

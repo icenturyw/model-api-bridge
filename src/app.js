@@ -10,6 +10,12 @@ function hashToken(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
+function timingSafeCompare(a, b) {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(a, "utf-8"), Buffer.from(b, "utf-8"));
+}
+
 function createPasswordHash(password, salt = crypto.randomBytes(16).toString("hex")) {
   const hash = crypto.scryptSync(password, salt, 64).toString("hex");
   return { hash, salt };
@@ -57,9 +63,16 @@ function parseCookies(req) {
     }, {});
 }
 
+const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
+
 async function readJsonBody(req) {
   const chunks = [];
+  let totalSize = 0;
   for await (const chunk of req) {
+    totalSize += chunk.length;
+    if (totalSize > MAX_BODY_SIZE) {
+      throw new BodyTooLargeError();
+    }
     chunks.push(chunk);
   }
   const raw = Buffer.concat(chunks).toString("utf-8");
@@ -67,6 +80,13 @@ async function readJsonBody(req) {
     return {};
   }
   return JSON.parse(raw);
+}
+
+class BodyTooLargeError extends Error {
+  constructor() {
+    super("Request body too large");
+    this.statusCode = 413;
+  }
 }
 
 function normalizeBaseUrl(baseUrl, endpointPath) {
@@ -255,7 +275,7 @@ function createApp(overrides = {}) {
     }
     const authHeader = req.headers.authorization || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-    if (!token || hashToken(token) !== configuredHash) {
+    if (!token || !timingSafeCompare(hashToken(token), configuredHash)) {
       json(res, 401, {
         error: {
           message: "Missing or invalid gateway API key",
@@ -1040,7 +1060,11 @@ function createApp(overrides = {}) {
 
       text(res, 404, "Not found");
     } catch (error) {
-      json(res, 500, { error: "Internal server error", detail: error.message });
+      if (error instanceof BodyTooLargeError) {
+        json(res, 413, { error: "Request body too large" });
+        return;
+      }
+      json(res, 500, { error: "Internal server error" });
     }
   }
 
