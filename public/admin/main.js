@@ -58,6 +58,7 @@ function showApp() {
 }
 
 function setLoading(viewId, loading) {
+  if (state.loading[viewId] === loading) return;
   state.loading[viewId] = loading;
   renderApp();
 }
@@ -181,9 +182,11 @@ async function loadQuotas() {
   }
 }
 
-async function loadRequestLogs() {
-  setLoading('logs', true);
-  clearError('logs');
+async function loadRequestLogs(silent = false) {
+  if (!silent) {
+    setLoading('logs', true);
+    clearError('logs');
+  }
   try {
     const params = new URLSearchParams();
     Object.entries(state.logs.requests.filters).forEach(([key, value]) => {
@@ -194,16 +197,19 @@ async function loadRequestLogs() {
     state.logs.requests.items = data.items;
     state.logs.requests.models = data.models;
     state.logs.requests.providers = data.providers;
+    if (silent) updateLogsContent();
   } catch (error) {
-    setError('logs', error.message);
+    if (!silent) setError('logs', error.message);
   } finally {
-    setLoading('logs', false);
+    if (!silent) setLoading('logs', false);
   }
 }
 
-async function loadSwitchLogs() {
-  setLoading('logs', true);
-  clearError('logs');
+async function loadSwitchLogs(silent = false) {
+  if (!silent) {
+    setLoading('logs', true);
+    clearError('logs');
+  }
   try {
     const params = new URLSearchParams();
     Object.entries(state.logs.switches.filters).forEach(([key, value]) => {
@@ -214,11 +220,18 @@ async function loadSwitchLogs() {
     state.logs.switches.items = data.items;
     state.logs.switches.models = data.models;
     state.logs.switches.reasons = data.reasons;
+    if (silent) updateLogsContent();
   } catch (error) {
-    setError('logs', error.message);
+    if (!silent) setError('logs', error.message);
   } finally {
-    setLoading('logs', false);
+    if (!silent) setLoading('logs', false);
   }
+}
+
+function updateLogsContent() {
+  const container = document.getElementById('viewContainer');
+  if (!container || appRoot.hidden) return;
+  container.innerHTML = state.logsTab === 'requests' ? renderRequestLogs() : renderSwitchLogs();
 }
 
 async function loadSystem() {
@@ -867,9 +880,13 @@ function setupEventListeners() {
 
       if (action === 'switch-logs-tab') {
         state.logsTab = target.dataset.tab;
-        if (state.logsTab === 'requests') await loadRequestLogs();
-        else await loadSwitchLogs();
-        renderApp();
+        if (state.logsTab === 'requests') await loadRequestLogs(true);
+        else await loadSwitchLogs(true);
+        const tabButtons = document.querySelectorAll('.tab-button');
+        tabButtons.forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.tab === state.logsTab);
+        });
+        updateLogsContent();
         return;
       }
 
@@ -1172,8 +1189,8 @@ function startLogRefresh() {
   logRefreshInterval = setInterval(async () => {
     if (appRoot.hidden || router.getCurrentView() !== 'logs') return;
     try {
-      if (state.logsTab === 'requests') await loadRequestLogs();
-      else await loadSwitchLogs();
+      if (state.logsTab === 'requests') await loadRequestLogs(true);
+      else await loadSwitchLogs(true);
     } catch {}
   }, 5000);
 }
