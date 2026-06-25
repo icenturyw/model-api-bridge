@@ -833,7 +833,12 @@ function findKey(keyId) {
   return null;
 }
 
+let listenersAttached = false;
+let logRefreshInterval = null;
+
 function setupEventListeners() {
+  if (listenersAttached) return;
+  listenersAttached = true;
   document.body.addEventListener('click', async (event) => {
     const target = event.target.closest('[data-action]');
     if (!target) return;
@@ -870,6 +875,11 @@ function setupEventListeners() {
 
       if (action === 'logout') {
         await api('/admin/auth/logout', { method: 'POST' });
+        if (logRefreshInterval) {
+          clearInterval(logRefreshInterval);
+          logRefreshInterval = null;
+        }
+        listenersAttached = false;
         showAuth('login');
         return;
       }
@@ -1158,7 +1168,8 @@ function setupEventListeners() {
 }
 
 function startLogRefresh() {
-  setInterval(async () => {
+  if (logRefreshInterval) clearInterval(logRefreshInterval);
+  logRefreshInterval = setInterval(async () => {
     if (appRoot.hidden || router.getCurrentView() !== 'logs') return;
     try {
       if (state.logsTab === 'requests') await loadRequestLogs();
@@ -1184,6 +1195,7 @@ async function boot() {
 
     router.onChange = async (to) => {
       state.activeView = to;
+      state.loading[to] = true;
       renderApp();
 
       switch (to) {

@@ -100,9 +100,9 @@ button:disabled {
 
 .sidebar {
   display: grid;
+  grid-template-rows: auto auto 1fr auto;
   gap: 8px;
   padding: 24px 16px;
-  align-content: start;
   overflow-y: auto;
   color: #e2e8f0;
   background: #0f172a;

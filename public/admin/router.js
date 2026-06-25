@@ -13,12 +13,17 @@ export class Router {
     return this;
   }
 
-  async navigate(viewId) {
+  navigate(viewId) {
     if (this.currentView === viewId) return;
 
     if (this.beforeNavigate) {
-      const shouldContinue = await this.beforeNavigate(this.currentView, viewId);
-      if (!shouldContinue) return;
+      const result = this.beforeNavigate(this.currentView, viewId);
+      if (result instanceof Promise) {
+        return result.then((shouldContinue) => {
+          if (shouldContinue) window.location.hash = viewId;
+        });
+      }
+      if (!result) return;
     }
 
     window.location.hash = viewId;
