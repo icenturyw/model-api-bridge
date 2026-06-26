@@ -1,34 +1,41 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
-`src/` contains the Node.js backend: `server.js` is the entrypoint, `app.js` wires HTTP routes and proxy logic, `config.js` reads environment-driven settings, and `store.js` manages SQLite persistence. `public/admin/` holds the admin SPA: `main.js` is the controller, `router.js` provides hash-based routing, `api.js` wraps fetch, `utils.js` has shared helpers, `views/` contains one module per view, and `components/` holds reusable UI pieces (modal, table, form, status). `scripts/` contains deployment scripts for both Linux (`.sh`) and Windows (`.bat`). Runtime SQLite files live in `data/`; timestamped snapshots in `data-backups/` are operational artifacts and should not be edited by hand.
+## Project Structure
+`src/` is the Node.js backend: `server.js` entrypoint, `app.js` all HTTP routing + proxy logic (1114 lines), `config.js` env-driven settings, `store.js` SQLite persistence (1556 lines). `public/admin/` is a zero-build hash-based SPA — no bundler, no build step. `scripts/` is daemon management for Linux (`.sh`) and Windows (`.bat`). Runtime SQLite files live in `data/`; `data-backups/` contains automated timestamped snapshots — never edit by hand.
 
-## Build, Test, and Development Commands
-Use Node.js 22 or newer.
+## Commands
+Requires Node.js 22+. **Zero npm dependencies** — stdlib only.
 
-- `npm start`: starts the gateway and admin console via `node src/server.js`.
-- `npm test`: runs the built-in Node test runner with `--experimental-test-isolation=none`.
-- `node src/server.js`: direct local run when you want to bypass `npm`.
+- `npm start` — start the gateway + admin console
+- `npm test` — run all tests
+- `node --test --experimental-test-isolation=none src/store.test.js` — run a single test file
+- `node src/server.js` — start without npm
 
-Default local URLs are `http://127.0.0.1:8787/admin` for the console and `http://127.0.0.1:8787/v1` for the OpenAI-compatible API.
+`--experimental-test-isolation=none` is required because integration tests mock `global.fetch` (tests share the global scope).
 
-## Coding Style & Naming Conventions
-Follow the existing style: CommonJS modules, 2-space indentation, semicolons, and single quotes only when required by the surrounding file style. Prefer small, single-purpose functions and keep helpers near their call sites. Use `camelCase` for variables and functions, `PascalCase` for classes like `Store`, and clear file names such as `config.js` or `server.js`.
+Default URLs: `http://127.0.0.1:8787/admin` (console), `http://127.0.0.1:8787/v1` (OpenAI-compatible API).
 
-This repository does not currently include ESLint or Prettier. Match the surrounding formatting manually and keep changes minimal.
+The gateway proxies three paths: `/v1/chat/completions`, `/v1/responses`, `/v1/embeddings`.
 
-## Testing Guidelines
-The project uses Node's built-in `node:test` runner. Add tests alongside future work using `*.test.js` naming so they are picked up by `npm test`. Focus coverage on routing fallbacks, auth/session handling, config parsing, and SQLite-backed state changes. Avoid depending on live provider APIs in tests.
+## Coding Conventions
+CommonJS modules. 2-space indentation, semicolons. No ESLint or Prettier configured — match surrounding style manually. `camelCase` variables, `PascalCase` classes (`Store`).
 
-## Commit & Pull Request Guidelines
-Git history is not available in this workspace, so commit conventions cannot be inferred directly. Use short, imperative commit messages such as `Add provider timeout fallback`. Keep each commit scoped to one change.
+## Testing
+Uses Node's built-in `node:test` runner with `node:assert/strict`. Test files must be named `*.test.js`.
 
-For pull requests, include:
+Tests create temporary SQLite databases in `os.tmpdir()` and clean up with `fs.rmSync(dbPath, { force: true })`. The `createApp(overrides)` function accepts `dbPath`, `dataDir`, `disableHealthMonitor`, and other overrides for testing. `global.fetch` is mocked in integration tests — restore it in `finally` blocks.
 
-- a brief summary of behavior changes
-- any new environment variables or data migrations
-- test evidence from `npm test`
-- screenshots for admin UI changes in `public/`
+Never depend on live provider APIs in tests.
 
-## Security & Configuration Tips
-Do not commit real API keys or populated `data/router.db` files. Prefer environment variables such as `PORT`, `HOST`, `DATA_DIR`, `PROVIDER_TIMEOUT_MS`, `FAILURE_THRESHOLD`, and `HEALTHCHECK_INTERVAL_MS` for local configuration.
+## Environment Variables
+| Variable | Default | Description |
+|---|---|---|
+| `HOST` | `127.0.0.1` | Listen address |
+| `PORT` | `8787` | Listen port |
+| `DATA_DIR` | `<cwd>/data` | Data directory |
+| `PROVIDER_TIMEOUT_MS` | `25000` | Upstream fetch timeout (ms) |
+| `FAILURE_THRESHOLD` | `3` | Consecutive failures before unhealthy |
+| `HEALTHCHECK_INTERVAL_MS` | `60000` | Health check probe interval (ms) |
+
+## Security
+Never commit real API keys or populated `data/router.db` files. The gateway key is stored as a SHA-256 hash (see `app.js:hashToken`). Routes with 404 responses are auto-deleted (self-healing).

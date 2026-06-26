@@ -3,7 +3,7 @@ import { router } from './router.js';
 import { registerViews, getViewList } from './views/index.js';
 import { status } from './components/status.js';
 import { modal } from './components/modal.js';
-import { escapeHtml, formatTime, debounce } from './utils.js';
+import { escapeHtml, formatTime, debounce, healthReasonLabel } from './utils.js';
 
 const state = {
   activeView: 'overview',
@@ -507,7 +507,7 @@ function renderProviders() {
                   <div class="card-header">
                     <strong>${escapeHtml(key.label)}</strong>
                     <div class="row-actions">
-                      ${pill(key.health_status, healthTone(key.health_status))}
+                      ${pill(key.health_status + (key.health_reason ? ': ' + healthReasonLabel(key.health_reason) : ''), healthTone(key.health_status))}
                       ${pill(key.enabled ? '启用' : '停用', key.enabled ? 'ok' : 'bad')}
                       <button data-action="open-modal" data-modal="edit-key" data-id="${key.id}" data-provider-id="${provider.id}">编辑</button>
                     </div>
@@ -600,7 +600,7 @@ function renderRouting() {
                       <p class="muted">${escapeHtml(route.provider_key_label)}</p>
                     </div>
                     <div class="row-actions">
-                      ${pill(route.health_status, healthTone(route.health_status))}
+                      ${pill(route.health_status + (route.health_reason ? ': ' + healthReasonLabel(route.health_reason) : ''), healthTone(route.health_status))}
                       ${pill(route.enabled ? '启用' : '停用', route.enabled ? 'ok' : 'bad')}
                       ${group.forced_route_id === route.id ? pill('主路由', 'accent') : ''}
                     </div>
@@ -1021,6 +1021,11 @@ function setupEventListeners() {
       if (!modal.isOpen()) return;
 
       event.preventDefault();
+      if (event.submitter?.value === 'cancel') {
+        modal.close();
+        return;
+      }
+
       const submitType = form.dataset.form;
 
       if (submitType === 'create-provider') {
@@ -1195,6 +1200,26 @@ function startLogRefresh() {
   }, 5000);
 }
 
+function setupRouterOnChange() {
+  router.onChange = async (to) => {
+    state.activeView = to;
+    state.loading[to] = true;
+    renderApp();
+
+    switch (to) {
+      case 'overview': await loadOverview(); break;
+      case 'providers': await loadProviders(); break;
+      case 'routing': await loadRouting(); break;
+      case 'quotas': await loadQuotas(); break;
+      case 'logs':
+        if (state.logsTab === 'requests') await loadRequestLogs();
+        else await loadSwitchLogs();
+        break;
+      case 'system': await loadSystem(); break;
+    }
+  };
+}
+
 async function boot() {
   try {
     const authStatus = await api('/admin/auth/status');
@@ -1209,32 +1234,12 @@ async function boot() {
     
     showApp();
     registerViews();
-
-    router.onChange = async (to) => {
-      state.activeView = to;
-      state.loading[to] = true;
-      renderApp();
-
-      switch (to) {
-        case 'overview': await loadOverview(); break;
-        case 'providers': await loadProviders(); break;
-        case 'routing': await loadRouting(); break;
-        case 'quotas': await loadQuotas(); break;
-        case 'logs':
-          if (state.logsTab === 'requests') await loadRequestLogs();
-          else await loadSwitchLogs();
-          break;
-        case 'system': await loadSystem(); break;
-      }
-    };
-
+    setupRouterOnChange();
     await Promise.all([loadOverview(), loadProviders(), loadRouting(), loadQuotas(), loadRequestLogs(), loadSwitchLogs(), loadSystem()]);
     renderApp();
-    
     setupEventListeners();
     modal.init(modalElement);
     startLogRefresh();
-    
     router.init();
   } catch (error) {
     status.show(error.message, 'error');
@@ -1254,6 +1259,7 @@ document.getElementById('setupForm').addEventListener('submit', async (event) =>
     });
     showApp();
     registerViews();
+    setupRouterOnChange();
     await Promise.all([loadOverview(), loadProviders(), loadRouting(), loadQuotas(), loadRequestLogs(), loadSwitchLogs(), loadSystem()]);
     renderApp();
     setupEventListeners();
@@ -1276,6 +1282,7 @@ document.getElementById('loginForm').addEventListener('submit', async (event) =>
     });
     showApp();
     registerViews();
+    setupRouterOnChange();
     await Promise.all([loadOverview(), loadProviders(), loadRouting(), loadQuotas(), loadRequestLogs(), loadSwitchLogs(), loadSystem()]);
     renderApp();
     setupEventListeners();

@@ -46,3 +46,16 @@ export function quotaTone(item) {
   if (item.warning_reached) return 'warn';
   return 'ok';
 }
+
+export function healthReasonLabel(reason) {
+  switch (reason) {
+    case 'authentication-failed': return '密钥无效';
+    case 'forbidden': return '无权限';
+    case 'rate-limited': return '请求频率限制';
+    case 'timeout': return '请求超时';
+    case 'server-error': return '服务器故障';
+    case 'network-error': return '无法连接';
+    case 'unknown-error': return '未知故障';
+    default: return reason || '';
+  }
+}

@@ -37,6 +37,18 @@ function toFlag(value, fallback = 1) {
   return value ? 1 : 0;
 }
 
+function healthReason(lastError) {
+  if (!lastError) return null;
+  const msg = lastError.toLowerCase();
+  if (msg.includes("401")) return "authentication-failed";
+  if (msg.includes("403")) return "forbidden";
+  if (msg.includes("429")) return "rate-limited";
+  if (msg.includes("timeout") || msg.includes("abort")) return "timeout";
+  if (msg.startsWith("healthcheck-5") || msg.startsWith("status-5")) return "server-error";
+  if (msg.includes("fetch") || msg.includes("enotfound") || msg.includes("econnrefused") || msg.includes("enetunreach")) return "network-error";
+  return "unknown-error";
+}
+
 class Store {
   constructor(dbPath, options = {}) {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -367,6 +379,7 @@ class Store {
         ...row,
         masked_key: maskKey(row.api_key),
         api_key: undefined,
+        health_reason: healthReason(row.last_error),
       });
     });
 
@@ -470,13 +483,18 @@ class Store {
       .prepare(
         `
           SELECT provider_keys.id, provider_keys.label, provider_keys.enabled, provider_keys.health_status,
+                 provider_keys.last_error,
                  providers.name AS provider_name
           FROM provider_keys
           JOIN providers ON providers.id = provider_keys.provider_id
           ORDER BY providers.priority ASC, providers.name COLLATE NOCASE ASC, provider_keys.id DESC
         `
       )
-      .all();
+      .all()
+      .map((row) => ({
+        ...row,
+        health_reason: healthReason(row.last_error),
+      }));
   }
 
   ensureVolcengineDedicatedGroup() {
@@ -673,7 +691,8 @@ class Store {
                  providers.enabled AS provider_enabled,
                  provider_keys.label AS provider_key_label,
                  provider_keys.enabled AS key_enabled,
-                 provider_keys.health_status
+                 provider_keys.health_status,
+                 provider_keys.last_error
           FROM model_routes
           JOIN provider_keys ON provider_keys.id = model_routes.provider_key_id
           JOIN providers ON providers.id = provider_keys.provider_id
@@ -682,7 +701,10 @@ class Store {
         `
       )
       .all(groupId)
-      .map((route) => this.hydrateQuotaState(route));
+      .map((route) => ({
+        ...this.hydrateQuotaState(route),
+        health_reason: healthReason(route.last_error),
+      }));
 
     return { ...group, routes };
   }
@@ -1124,6 +1146,7 @@ class Store {
           target_name: `${hydrated.provider_name}/${hydrated.provider_model_name}`,
           skip_reason: skipReason,
           usable: !skipReason,
+          health_reason: healthReason(hydrated.last_error),
         };
       });
 
